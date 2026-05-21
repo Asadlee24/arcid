@@ -1,6 +1,6 @@
 // src/hooks/useArcID.ts
 import { useState, useEffect } from "react";
-import { usePublicClient, useAccount, useWalletClient } from "wagmi";
+import { usePublicClient, useAccount, useWalletClient, useChainId } from "wagmi";
 import { decodeEventLog } from "viem";
 import { IDENTITY_REGISTRY, identityAbi } from "../config/contracts";
 import { arcTestnet } from "../config/wagmi";
@@ -86,6 +86,7 @@ export function useArcID() {
   const publicClient = usePublicClient();
   const { data: walletClient, isLoading: walletLoading } = useWalletClient();
   const { address: userAddress, isConnected } = useAccount();
+  const chainId = useChainId();
 
   const [loading, setLoading] = useState(false);
   const [profiles, setProfiles] = useState<ArcIDProfile[]>([]);
@@ -169,6 +170,9 @@ export function useArcID() {
     }) => {
       if (!isConnected || !userAddress) {
         throw new Error("Wallet not connected. Please connect MetaMask first.");
+      }
+      if (chainId !== arcTestnet.id) {
+        throw new Error("Wrong network. Please switch to Arc Testnet in the navbar first.");
       }
       if (walletLoading) {
         throw new Error("Wallet is still loading. Please wait a moment and try again.");

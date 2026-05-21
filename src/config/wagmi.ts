@@ -1,6 +1,5 @@
-// src/config/wagmi.ts
 import { createConfig, http } from "wagmi";
-import { metaMask } from "wagmi/connectors";
+import { metaMask, injected } from "wagmi/connectors";
 import { defineChain } from "viem";
 
 // Verified exact values at: https://docs.arc.network/arc/references/connect-to-arc
@@ -31,7 +30,7 @@ export const arcTestnet = defineChain({
 
 export const config = createConfig({
   chains: [arcTestnet],
-  connectors: [metaMask()],
+  connectors: [metaMask(), injected()],
   transports: {
     [arcTestnet.id]: http(),
   },

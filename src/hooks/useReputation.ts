@@ -1,6 +1,6 @@
 // src/hooks/useReputation.ts
 import { useState } from "react";
-import { usePublicClient, useAccount, useWalletClient } from "wagmi";
+import { usePublicClient, useAccount, useWalletClient, useChainId } from "wagmi";
 import { REPUTATION_REGISTRY, reputationAbi } from "../config/contracts";
 import { arcTestnet } from "../config/wagmi";
 import { useArcID, type ArcIDProfile, MOCK_PROFILES } from "./useArcID";
@@ -10,6 +10,7 @@ export function useReputation() {
   const publicClient = usePublicClient();
   const { data: walletClient, isLoading: walletLoading } = useWalletClient();
   const { address: userAddress, isConnected } = useAccount();
+  const chainId = useChainId();
   const { refreshProfiles } = useArcID();
 
   const [loading, setLoading] = useState(false);
@@ -17,6 +18,9 @@ export function useReputation() {
   const requireWallet = () => {
     if (!isConnected || !userAddress) {
       throw new Error("Wallet not connected. Please connect MetaMask first.");
+    }
+    if (chainId !== arcTestnet.id) {
+      throw new Error("Wrong network. Please switch to Arc Testnet in the navbar first.");
     }
     if (walletLoading) {
       throw new Error("Wallet is still loading. Please try again in a moment.");
