@@ -8,19 +8,32 @@ import { sendUSDCTip } from "../lib/arckit";
 
 export function useReputation() {
   const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
-  const { address: userAddress } = useAccount();
+  const { data: walletClient, isLoading: walletLoading } = useWalletClient();
+  const { address: userAddress, isConnected } = useAccount();
   const { refreshProfiles } = useArcID();
 
   const [loading, setLoading] = useState(false);
+
+  const requireWallet = () => {
+    if (!isConnected || !userAddress) {
+      throw new Error("Wallet not connected. Please connect MetaMask first.");
+    }
+    if (walletLoading) {
+      throw new Error("Wallet is still loading. Please try again in a moment.");
+    }
+    if (!walletClient) {
+      throw new Error("Wallet client not ready. Please reconnect your wallet.");
+    }
+    if (!publicClient) {
+      throw new Error("Network client not ready. Please refresh the page.");
+    }
+  };
 
   /**
    * 1. Endorse a profile (calls ReputationRegistry.giveFeedback onchain)
    */
   const endorseProfile = async (recipientProfile: ArcIDProfile, comment: string = "Highly recommended!") => {
-    if (!walletClient || !userAddress) {
-      throw new Error("Wallet not connected");
-    }
+    requireWallet();
 
     setLoading(true);
     try {
@@ -65,7 +78,7 @@ export function useReputation() {
       return { success: true, hash };
     } catch (error: any) {
       console.error("Endorsement failed:", error);
-      throw new Error(error.message || "Failed to submit endorsement onchain");
+      throw new Error(error.shortMessage || error.message || "Failed to submit endorsement onchain");
     } finally {
       setLoading(false);
     }
@@ -79,9 +92,7 @@ export function useReputation() {
     amount: string,
     comment: string = "Generous USDC Tipping"
   ) => {
-    if (!walletClient || !userAddress) {
-      throw new Error("Wallet not connected");
-    }
+    requireWallet();
 
     setLoading(true);
     try {
@@ -140,7 +151,7 @@ export function useReputation() {
       };
     } catch (error: any) {
       console.error("Tipping process failed:", error);
-      throw new Error(error.message || "Tipping process failed");
+      throw new Error(error.shortMessage || error.message || "Tipping process failed");
     } finally {
       setLoading(false);
     }

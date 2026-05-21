@@ -84,8 +84,8 @@ export const MOCK_PROFILES: ArcIDProfile[] = [
 
 export function useArcID() {
   const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
-  const { address: userAddress } = useAccount();
+  const { data: walletClient, isLoading: walletLoading } = useWalletClient();
+  const { address: userAddress, isConnected } = useAccount();
 
   const [loading, setLoading] = useState(false);
   const [profiles, setProfiles] = useState<ArcIDProfile[]>([]);
@@ -159,117 +159,127 @@ export function useArcID() {
   }, [userAddress, publicClient]);
 
   // Mint / Register Identity (ERC-8004)
-  const registerIdentity = async (formData: {
-    name: string;
-    title: string;
-    bio: string;
-    skills: string[];
-    portfolio?: string;
-    twitter?: string;
-  }) => {
-    if (!walletClient || !userAddress) {
-      throw new Error("Wallet not connected");
-    }
-
-    setLoading(true);
-    try {
-      // 1. Construct Metadata JSON matching the ERC-8004 spec
-      const metadata = {
-        name: formData.name,
-        title: formData.title,
-        bio: formData.bio,
-        skills: formData.skills,
-        portfolio: formData.portfolio || "",
-        twitter: formData.twitter || "",
-        version: "1.0.0",
-        platform: "ArcID"
-      };
-
-      // Since hackathon instructions allow storing metadata as base64 data URI to avoid IPFS latency:
-      const base64Metadata = btoa(unescape(encodeURIComponent(JSON.stringify(metadata))));
-      const metadataURI = `data:application/json;base64,${base64Metadata}`;
-
-      console.log("Minting ERC-8004 NFT on Arc Testnet with URI:", metadataURI);
-
-      // 2. Call IdentityRegistry.register(metadataURI)
-      const hash = await walletClient.writeContract({
-        address: IDENTITY_REGISTRY,
-        abi: identityAbi,
-        functionName: "register",
-        args: [metadataURI],
-        chain: arcTestnet,
-        account: userAddress,
-      });
-
-      console.log("Transaction submitted! Hash:", hash);
-
-      // 3. Wait for sub-second block confirmation
-      let tokenId = `${Date.now()}`; // fallback token ID if logs fail
-      try {
-        const receipt = await publicClient.waitForTransactionReceipt({ hash });
-        console.log("Transaction confirmed!", receipt);
-
-        // Try to decode tokenId from Transfer event log
-        const transferLog = receipt.logs.find(log => log.address.toLowerCase() === IDENTITY_REGISTRY.toLowerCase());
-        if (transferLog) {
-          const decoded = decodeEventLog({
-            abi: identityAbi,
-            eventName: "Transfer",
-            topics: (transferLog as any).topics,
-            data: transferLog.data,
-          });
-          if (decoded && decoded.args) {
-            tokenId = (decoded.args as any).tokenId.toString();
-            console.log("Decoded Token ID:", tokenId);
-          }
-        }
-      } catch (err) {
-        console.warn("Could not wait for tx receipt or decode logs. Generating standard token ID.", err);
+    const registerIdentity = async (formData: {
+      name: string;
+      title: string;
+      bio: string;
+      skills: string[];
+      portfolio?: string;
+      twitter?: string;
+    }) => {
+      if (!isConnected || !userAddress) {
+        throw new Error("Wallet not connected. Please connect MetaMask first.");
+      }
+      if (walletLoading) {
+        throw new Error("Wallet is still loading. Please wait a moment and try again.");
+      }
+      if (!walletClient) {
+        throw new Error("Wallet client not ready. Please reconnect your wallet and try again.");
+      }
+      if (!publicClient) {
+        throw new Error("Network client not ready. Please refresh the page.");
       }
 
-      // 4. Save new profile to local index for instant availability
-      const newProfile: ArcIDProfile = {
-        address: userAddress,
-        tokenId,
-        name: formData.name,
-        title: formData.title,
-        bio: formData.bio,
-        skills: formData.skills,
-        portfolio: formData.portfolio,
-        twitter: formData.twitter,
-        txHash: hash,
-        reputationScore: 30, // Starting score for new users
-        tipsReceived: 0,
-        endorsements: 0,
-        joinedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      };
+      setLoading(true);
+      try {
+        // Build metadata URI
+        const metadata = {
+          name: formData.name,
+          title: formData.title,
+          bio: formData.bio,
+          skills: formData.skills,
+          portfolio: formData.portfolio || "",
+          twitter: formData.twitter || "",
+          version: "1.0.0",
+          platform: "ArcID",
+        };
+        const base64Metadata = btoa(unescape(encodeURIComponent(JSON.stringify(metadata))));
+        const metadataURI = `data:application/json;base64,${base64Metadata}`;
 
-      const stored = localStorage.getItem("arcid_minted_profiles");
-      const currentStored = stored ? JSON.parse(stored) : [];
-      
-      // Filter out existing profile for same user if any
-      const updatedStored = [
-        newProfile,
-        ...currentStored.filter((p: any) => p.address.toLowerCase() !== userAddress.toLowerCase())
-      ];
-      localStorage.setItem("arcid_minted_profiles", JSON.stringify(updatedStored));
-
-      // Reload profile lists
-      await loadAllProfiles();
-
-      return {
-        success: true,
-        hash,
-        tokenId,
-        profile: newProfile
-      };
-    } catch (error: any) {
-      console.error("Error registering identity:", error);
-      throw new Error(error.message || "Failed to register identity onchain");
-    } finally {
-      setLoading(false);
-    }
-  };
+        // If wallet client is available, perform real onchain mint
+        if (walletClient) {
+          const hash = await walletClient.writeContract({
+            address: IDENTITY_REGISTRY,
+            abi: identityAbi,
+            functionName: "register",
+            args: [metadataURI],
+            chain: arcTestnet,
+            account: userAddress,
+          });
+          // Wait for receipt and decode tokenId
+          let tokenId = `${Date.now()}`;
+          try {
+            const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            const transferLog = receipt.logs.find(log => log.address.toLowerCase() === IDENTITY_REGISTRY.toLowerCase());
+            if (transferLog) {
+              const decoded = decodeEventLog({
+                abi: identityAbi,
+                eventName: "Transfer",
+                topics: (transferLog as any).topics,
+                data: transferLog.data,
+              });
+              if (decoded && decoded.args) {
+                tokenId = (decoded.args as any).tokenId.toString();
+              }
+            }
+          } catch (err) {
+            console.warn("Receipt wait failed, using fallback tokenId.", err);
+          }
+          // Save profile
+          const newProfile: ArcIDProfile = {
+            address: userAddress,
+            tokenId,
+            name: formData.name,
+            title: formData.title,
+            bio: formData.bio,
+            skills: formData.skills,
+            portfolio: formData.portfolio,
+            twitter: formData.twitter,
+            txHash: hash,
+            reputationScore: 30,
+            tipsReceived: 0,
+            endorsements: 0,
+            joinedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          };
+          const stored = localStorage.getItem("arcid_minted_profiles");
+          const currentStored = stored ? JSON.parse(stored) : [];
+          const updatedStored = [newProfile, ...currentStored.filter((p: any) => p.address.toLowerCase() !== userAddress.toLowerCase())];
+          localStorage.setItem("arcid_minted_profiles", JSON.stringify(updatedStored));
+          await loadAllProfiles();
+          return { success: true, hash, tokenId, profile: newProfile };
+        } else {
+          // Fallback mock mint when wallet client is not ready (development/testing)
+          const mockHash = "0xdeadbeef" + Date.now();
+          const tokenId = `${Date.now()}`;
+          const newProfile: ArcIDProfile = {
+            address: userAddress,
+            tokenId,
+            name: formData.name,
+            title: formData.title,
+            bio: formData.bio,
+            skills: formData.skills,
+            portfolio: formData.portfolio,
+            twitter: formData.twitter,
+            txHash: mockHash,
+            reputationScore: 30,
+            tipsReceived: 0,
+            endorsements: 0,
+            joinedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          };
+          const stored = localStorage.getItem("arcid_minted_profiles");
+          const currentStored = stored ? JSON.parse(stored) : [];
+          const updatedStored = [newProfile, ...currentStored.filter((p: any) => p.address.toLowerCase() !== userAddress.toLowerCase())];
+          localStorage.setItem("arcid_minted_profiles", JSON.stringify(updatedStored));
+          await loadAllProfiles();
+          return { success: true, hash: mockHash, tokenId, profile: newProfile };
+        }
+      } catch (error: any) {
+        console.error("Error registering identity:", error);
+        throw new Error(error.shortMessage || error.message || "Failed to register identity onchain");
+      } finally {
+        setLoading(false);
+      }
+    };
 
   const getProfileByAddress = (address: string): ArcIDProfile | null => {
     return profiles.find(p => p.address.toLowerCase() === address.toLowerCase()) || null;
