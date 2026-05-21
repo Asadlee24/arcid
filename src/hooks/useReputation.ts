@@ -1,39 +1,39 @@
 // src/hooks/useReputation.ts
 import { useState } from "react";
-import { usePublicClient, useAccount } from "wagmi";
-import { getWalletClient } from "@wagmi/core";
+import { usePublicClient, useAccount, useWalletClient } from "wagmi";
 import { REPUTATION_REGISTRY, reputationAbi } from "../config/contracts";
-import { arcTestnet, config } from "../config/wagmi";
+import { arcTestnet } from "../config/wagmi";
 import { useArcID, type ArcIDProfile, MOCK_PROFILES } from "./useArcID";
 import { sendUSDCTip } from "../lib/arckit";
 
 export function useReputation() {
   const publicClient = usePublicClient();
+  const { data: walletClient, isLoading: walletLoading } = useWalletClient();
   const { address: userAddress, isConnected } = useAccount();
   const { refreshProfiles } = useArcID();
 
   const [loading, setLoading] = useState(false);
 
-  // Imperatively fetch wallet client when needed (hook value can be undefined due to wagmi timing)
-  const getWallet = async () => {
+  const requireWallet = () => {
     if (!isConnected || !userAddress) {
       throw new Error("Wallet not connected. Please connect MetaMask first.");
+    }
+    if (walletLoading) {
+      throw new Error("Wallet is still loading. Please try again in a moment.");
+    }
+    if (!walletClient) {
+      throw new Error("Wallet client not ready. Please reconnect your wallet.");
     }
     if (!publicClient) {
       throw new Error("Network client not ready. Please refresh the page.");
     }
-    const wc = await getWalletClient(config);
-    if (!wc) {
-      throw new Error("Wallet client not ready. Please reconnect your wallet.");
-    }
-    return wc;
   };
 
   /**
    * 1. Endorse a profile (calls ReputationRegistry.giveFeedback onchain)
    */
   const endorseProfile = async (recipientProfile: ArcIDProfile, comment: string = "Highly recommended!") => {
-    const walletClient = await getWallet();
+    requireWallet();
 
     setLoading(true);
     try {
@@ -92,7 +92,7 @@ export function useReputation() {
     amount: string,
     comment: string = "Generous USDC Tipping"
   ) => {
-    const walletClient = await getWallet();
+    requireWallet();
 
     setLoading(true);
     try {

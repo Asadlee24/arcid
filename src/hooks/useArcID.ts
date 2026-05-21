@@ -1,10 +1,9 @@
 // src/hooks/useArcID.ts
 import { useState, useEffect } from "react";
-import { usePublicClient, useAccount } from "wagmi";
-import { getWalletClient } from "@wagmi/core";
+import { usePublicClient, useAccount, useWalletClient } from "wagmi";
 import { decodeEventLog } from "viem";
 import { IDENTITY_REGISTRY, identityAbi } from "../config/contracts";
-import { arcTestnet, config } from "../config/wagmi";
+import { arcTestnet } from "../config/wagmi";
 
 export interface ArcIDProfile {
   address: string;
@@ -85,6 +84,7 @@ export const MOCK_PROFILES: ArcIDProfile[] = [
 
 export function useArcID() {
   const publicClient = usePublicClient();
+  const { data: walletClient, isLoading: walletLoading } = useWalletClient();
   const { address: userAddress, isConnected } = useAccount();
 
   const [loading, setLoading] = useState(false);
@@ -170,6 +170,12 @@ export function useArcID() {
       if (!isConnected || !userAddress) {
         throw new Error("Wallet not connected. Please connect MetaMask first.");
       }
+      if (walletLoading) {
+        throw new Error("Wallet is still loading. Please wait a moment and try again.");
+      }
+      if (!walletClient) {
+        throw new Error("Wallet client not ready. Please reconnect your wallet and try again.");
+      }
       if (!publicClient) {
         throw new Error("Network client not ready. Please refresh the page.");
       }
@@ -190,84 +196,55 @@ export function useArcID() {
         const base64Metadata = btoa(unescape(encodeURIComponent(JSON.stringify(metadata))));
         const metadataURI = `data:application/json;base64,${base64Metadata}`;
 
-        // Imperatively fetch wallet client (hook value can be undefined due to wagmi timing)
-        const walletClient = await getWalletClient(config);
-        if (walletClient) {
-          const hash = await walletClient.writeContract({
-            address: IDENTITY_REGISTRY,
-            abi: identityAbi,
-            functionName: "register",
-            args: [metadataURI],
-            chain: arcTestnet,
-            account: userAddress,
-          });
-          // Wait for receipt and decode tokenId
-          let tokenId = `${Date.now()}`;
-          try {
-            const receipt = await publicClient.waitForTransactionReceipt({ hash });
-            const transferLog = receipt.logs.find(log => log.address.toLowerCase() === IDENTITY_REGISTRY.toLowerCase());
-            if (transferLog) {
-              const decoded = decodeEventLog({
-                abi: identityAbi,
-                eventName: "Transfer",
-                topics: (transferLog as any).topics,
-                data: transferLog.data,
-              });
-              if (decoded && decoded.args) {
-                tokenId = (decoded.args as any).tokenId.toString();
-              }
+        const hash = await walletClient.writeContract({
+          address: IDENTITY_REGISTRY,
+          abi: identityAbi,
+          functionName: "register",
+          args: [metadataURI],
+          chain: arcTestnet,
+          account: userAddress,
+        });
+        // Wait for receipt and decode tokenId
+        let tokenId = `${Date.now()}`;
+        try {
+          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+          const transferLog = receipt.logs.find(log => log.address.toLowerCase() === IDENTITY_REGISTRY.toLowerCase());
+          if (transferLog) {
+            const decoded = decodeEventLog({
+              abi: identityAbi,
+              eventName: "Transfer",
+              topics: (transferLog as any).topics,
+              data: transferLog.data,
+            });
+            if (decoded && decoded.args) {
+              tokenId = (decoded.args as any).tokenId.toString();
             }
-          } catch (err) {
-            console.warn("Receipt wait failed, using fallback tokenId.", err);
           }
-          // Save profile
-          const newProfile: ArcIDProfile = {
-            address: userAddress,
-            tokenId,
-            name: formData.name,
-            title: formData.title,
-            bio: formData.bio,
-            skills: formData.skills,
-            portfolio: formData.portfolio,
-            twitter: formData.twitter,
-            txHash: hash,
-            reputationScore: 30,
-            tipsReceived: 0,
-            endorsements: 0,
-            joinedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          };
-          const stored = localStorage.getItem("arcid_minted_profiles");
-          const currentStored = stored ? JSON.parse(stored) : [];
-          const updatedStored = [newProfile, ...currentStored.filter((p: any) => p.address.toLowerCase() !== userAddress.toLowerCase())];
-          localStorage.setItem("arcid_minted_profiles", JSON.stringify(updatedStored));
-          await loadAllProfiles();
-          return { success: true, hash, tokenId, profile: newProfile };
-        } else {
-          // Fallback mock mint when wallet client is not ready (development/testing)
-          const mockHash = "0xdeadbeef" + Date.now();
-          const tokenId = `${Date.now()}`;
-          const newProfile: ArcIDProfile = {
-            address: userAddress,
-            tokenId,
-            name: formData.name,
-            title: formData.title,
-            bio: formData.bio,
-            skills: formData.skills,
-            portfolio: formData.portfolio,
-            twitter: formData.twitter,
-            txHash: mockHash,
-            reputationScore: 30,
-            tipsReceived: 0,
-            endorsements: 0,
-            joinedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          };
-          const stored = localStorage.getItem("arcid_minted_profiles");
-          const currentStored = stored ? JSON.parse(stored) : [];
-          const updatedStored = [newProfile, ...currentStored.filter((p: any) => p.address.toLowerCase() !== userAddress.toLowerCase())];
-          localStorage.setItem("arcid_minted_profiles", JSON.stringify(updatedStored));
-          await loadAllProfiles();
-          return { success: true, hash: mockHash, tokenId, profile: newProfile };
+        } catch (err) {
+          console.warn("Receipt wait failed, using fallback tokenId.", err);
         }
+        // Save profile
+        const newProfile: ArcIDProfile = {
+          address: userAddress,
+          tokenId,
+          name: formData.name,
+          title: formData.title,
+          bio: formData.bio,
+          skills: formData.skills,
+          portfolio: formData.portfolio,
+          twitter: formData.twitter,
+          txHash: hash,
+          reputationScore: 30,
+          tipsReceived: 0,
+          endorsements: 0,
+          joinedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        };
+        const stored = localStorage.getItem("arcid_minted_profiles");
+        const currentStored = stored ? JSON.parse(stored) : [];
+        const updatedStored = [newProfile, ...currentStored.filter((p: any) => p.address.toLowerCase() !== userAddress.toLowerCase())];
+        localStorage.setItem("arcid_minted_profiles", JSON.stringify(updatedStored));
+        await loadAllProfiles();
+        return { success: true, hash, tokenId, profile: newProfile };
       } catch (error: any) {
         console.error("Error registering identity:", error);
         throw new Error(error.shortMessage || error.message || "Failed to register identity onchain");
