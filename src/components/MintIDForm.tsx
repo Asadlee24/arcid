@@ -73,7 +73,7 @@ export default function MintIDForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isConnected || !address) {
+    if (!address) {
       alert("Please connect your MetaMask wallet first.");
       return;
     }

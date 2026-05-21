@@ -1,9 +1,10 @@
 // src/hooks/useArcID.ts
 import { useState, useEffect } from "react";
-import { usePublicClient, useWalletClient, useAccount } from "wagmi";
+import { usePublicClient, useAccount } from "wagmi";
+import { getWalletClient } from "@wagmi/core";
 import { decodeEventLog } from "viem";
 import { IDENTITY_REGISTRY, identityAbi } from "../config/contracts";
-import { arcTestnet } from "../config/wagmi";
+import { arcTestnet, config } from "../config/wagmi";
 
 export interface ArcIDProfile {
   address: string;
@@ -84,7 +85,6 @@ export const MOCK_PROFILES: ArcIDProfile[] = [
 
 export function useArcID() {
   const publicClient = usePublicClient();
-  const { data: walletClient, isLoading: walletLoading } = useWalletClient();
   const { address: userAddress, isConnected } = useAccount();
 
   const [loading, setLoading] = useState(false);
@@ -170,12 +170,6 @@ export function useArcID() {
       if (!isConnected || !userAddress) {
         throw new Error("Wallet not connected. Please connect MetaMask first.");
       }
-      if (walletLoading) {
-        throw new Error("Wallet is still loading. Please wait a moment and try again.");
-      }
-      if (!walletClient) {
-        throw new Error("Wallet client not ready. Please reconnect your wallet and try again.");
-      }
       if (!publicClient) {
         throw new Error("Network client not ready. Please refresh the page.");
       }
@@ -196,7 +190,8 @@ export function useArcID() {
         const base64Metadata = btoa(unescape(encodeURIComponent(JSON.stringify(metadata))));
         const metadataURI = `data:application/json;base64,${base64Metadata}`;
 
-        // If wallet client is available, perform real onchain mint
+        // Imperatively fetch wallet client (hook value can be undefined due to wagmi timing)
+        const walletClient = await getWalletClient(config);
         if (walletClient) {
           const hash = await walletClient.writeContract({
             address: IDENTITY_REGISTRY,

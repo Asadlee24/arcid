@@ -1,13 +1,6 @@
-import { Globe, Linkedin, MessageCircle, ExternalLink, Code } from "lucide-react";
+import { Globe, Linkedin, MessageCircle, ExternalLink } from "lucide-react";
 
 export default function AboutBuilder() {
-  const projects = [
-    { name: "Horia Electronics", desc: "Industrial systems dashboard" },
-    { name: "MDK Electronics", desc: "Ecommerce hardware layer" },
-    { name: "Kite AI Quiz", desc: "Smart education protocol" },
-    { name: "CMAI WL Checker", desc: "Onchain Allowlist check" }
-  ];
-
   return (
     <section className="relative py-12 px-4 border-t border-accent-primary/10 bg-gradient-to-b from-transparent to-bg-secondary/40 overflow-hidden">
       {/* Background Islamic grid motif */}
@@ -49,27 +42,12 @@ export default function AboutBuilder() {
           </div>
 
           {/* Builder Details */}
-          <div className="flex-grow space-y-4">
+          <div className="flex-grow space-y-5">
             <div>
               <span className="text-[10px] font-mono text-accent-secondary uppercase tracking-widest block">Role & Institution</span>
-              <p className="text-sm text-text-primary font-medium mt-1">
+              <p className="text-sm text-text-primary font-medium mt-1 leading-relaxed">
                 IMSciences Peshawar Student | Cyber Security Researcher | Web Developer
               </p>
-            </div>
-
-            <div>
-              <span className="text-[10px] font-mono text-accent-secondary uppercase tracking-widest block mb-2">Featured Projects</span>
-              <div className="grid grid-cols-2 gap-3">
-                {projects.map((proj, idx) => (
-                  <div key={idx} className="bg-bg-primary/50 border border-accent-primary/10 rounded-lg p-2.5 hover:border-accent-primary/30 transition-colors">
-                    <div className="flex items-center gap-1.5 text-xs font-mono text-accent-primary font-bold">
-                      <Code className="w-3.5 h-3.5" />
-                      {proj.name}
-                    </div>
-                    <span className="text-[9px] text-text-secondary block mt-0.5">{proj.desc}</span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* Social / Portfolio Links */}
